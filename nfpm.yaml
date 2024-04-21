@@ -1,0 +1,17 @@
+name: "cargo-workspace-unused-pub"
+arch: "amd64"
+platform: "linux"
+version: "${CARGO_MAKE_PROJECT_VERSION}"
+release: "${RELEASE}"
+section: "default"
+priority: "extra"
+provides:
+  - cargo-workspace-unused-pub
+description: "Detect unused pub methods in a Rust workspace"
+vendor: "cpg314"
+maintainer: "cpg314 <44120267+cpg314@users.noreply.github.com>"
+homepage: "https://github.com/cpg314/cargo-workspace-unused-pub"
+contents:
+  - src: "./target-cross/$ARCH/release/cargo-workspace-unused-pub"
+    dst: /usr/local/bin/cargo-workspace-unused-pub
+    expand: true
