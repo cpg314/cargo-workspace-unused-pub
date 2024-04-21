@@ -1,6 +1,6 @@
 # cargo-workspace-unused-pub
 
-This cargo subcommand tries to to detect `pub` methods that are unused in an entire workspace, by performing workspace-wide analysis.
+This cargo subcommand tries to detect `pub` methods that are unused in an entire workspace, by performing workspace-wide analysis.
 
 The [`dead_code` Rust compiler lint](https://doc.rust-lang.org/rust-by-example/attribute/unused.html) ignores `pub` methods, given that:
 
@@ -48,7 +48,7 @@ Detection is performed in multiple phases:
    Found 6722 declarations and 286 traits
    ```
 
-3. Phase 1: Find all methods that are seem never used. The following phase aim at removing false positives.
+3. Phase 1: Find all methods that are seem never used. The following phases aim at removing false positives.
 
    ```
    Pass 1: 1419 candidates
@@ -81,7 +81,7 @@ The output of each phase (in the format above) can be viewed by setting the `RUS
 ## TODO
 
 - Automatically remove the unused functions (assuming a clean git repository is found).
-- Build an approxiamte SCIP index with tree-sitter instead of rust-analyzer, for faster execution (e.g. in CI).
+- Build an approximate SCIP index with tree-sitter instead of rust-analyzer, for faster execution (e.g. in CI).
 - Allow ignoring false positives with a special code comment or attribute.
 - Support other objects than only methods (e.g. constants).
 - Robustify the detection of test/main functions.
