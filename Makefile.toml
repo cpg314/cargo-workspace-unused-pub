@@ -1,27 +1,4 @@
-[tasks.default]
-clear = true
-script = '''
-#!/usr/bin/env bash
-set -euo pipefail
-VERSION=$CARGO_MAKE_PROJECT_VERSION
-PACKAGE=$CARGO_MAKE_PROJECT_NAME
-export RELEASE=1
-export ARCH=x86_64-unknown-linux-gnu 
-BUILD_OUT=target-cross/$ARCH/release/
-mkdir -p $BUILD_OUT
-OUT=target-cross/packages
-mkdir -p $OUT
+extend = "common.toml"
 
-cargo about generate about.hbs > $BUILD_OUT/licenses.html
-cross build -r --target $ARCH --target-dir target-cross
-
-DEST=$OUT/$PACKAGE-$VERSION-$RELEASE-$ARCH.tar.gz
-tar czf $DEST -C $BUILD_OUT $PACKAGE licenses.html
-tar tvf $DEST
-
-for PACKAGER in deb archlinux; do
-    nfpm pkg --packager $PACKAGER -t $OUT
-done
-ls -lh $OUT
-git cliff -l
-'''
+[config]
+load_script = "wget -nc https://raw.githubusercontent.com/cpg314/cargo-make-template/v0.1.0/common.toml"
