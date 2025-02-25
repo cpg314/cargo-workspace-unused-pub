@@ -76,7 +76,7 @@ The output of each phase (in the format above) can be viewed by setting the `RUS
 
 ## Alternatives
 
-- https://github.com/est31/warnalyzer, which relied on the removed nightly `save-analysis` feature, and therefore requires an older nightly compiler. See https://github.com/est31/warnalyzer/issues/9
+- https://github.com/est31/warnalyzer. When `cargo-workspace-unused-pub` was developed, `warnalyzer` relied on the removed nightly `save-analysis` feature, and therefore required an older nightly compiler (see https://github.com/est31/warnalyzer/issues/9). This issue is now addressed, and `warnanalyzer` has a SCIP backend.
 
 ## TODO
 
