@@ -2,6 +2,10 @@
 name = "cargo-workspace-unused-pub"
 version = "0.1.0"
 edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/cpg314/cargo-workspace-unused-pub"
+category = ["development-tools::cargo-plugins"]
+description = "Detect unused pub methods in a Rust workspace"
 
 [dependencies]
 anyhow = "1.0.81"
