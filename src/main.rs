@@ -4,6 +4,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
+use anyhow::Context;
 use clap::Parser;
 use colored::Colorize;
 use itertools::Itertools;
@@ -130,7 +131,9 @@ fn main_impl(args: MainFlags) -> anyhow::Result<()> {
                     .map_or(false, |e| extensions.contains(e))
         })
         .for_each(|f| {
-            let contents = std::fs::read_to_string(f.path()).unwrap();
+            let contents = std::fs::read_to_string(f.path())
+                .with_context(|| format!("Failed to read {}", f.file_name().to_string_lossy()))
+                .unwrap();
             for line in contents.lines() {
                 for d in declarations.values() {
                     if line.contains(&d.display_name) {
