@@ -10,7 +10,7 @@ use itertools::Itertools;
 use log::*;
 use protobuf::Message;
 use scip::types::Occurrence;
-use scip::types::{symbol_information::Kind, Document, SymbolInformation, SymbolRole};
+use scip::types::{Document, SymbolInformation, SymbolRole, symbol_information::Kind};
 
 #[derive(Parser)]
 #[command(name = "cargo")]
@@ -31,27 +31,103 @@ struct Flags {
     extensions: Vec<String>,
 }
 
+/// Returns whether a SCIP symbol denotes a trait method implementation.
+///
+/// rust-analyzer emits symbols shaped as:
+/// - inherent method: `.../impl#[Type]method().`
+/// - trait method:    `.../impl#[Type][Trait]method().`
+///
+/// Trait methods may be called implicitly (e.g. serde's `Visitor`), and their
+/// trait often lives outside the workspace, so it never enters the `traits` set
+/// collected from the index; matching by trait name therefore misses them. Detect
+/// them structurally instead: after `impl#[`, skip the first bracketed segment
+/// (the type) and check whether another `[` immediately follows.
+fn is_trait_impl(symbol: &str) -> bool {
+    const MARK: &str = "impl#[";
+    let Some(pos) = symbol.find(MARK) else {
+        return false;
+    };
+    let rest = &symbol[pos + MARK.len()..];
+    // Skip the first segment (the type); the type itself may contain brackets,
+    // so match them by nesting depth.
+    let mut depth = 1usize;
+    for (i, c) in rest.char_indices() {
+        match c {
+            '[' => depth += 1,
+            ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    return rest[i + 1..].starts_with('[');
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Path to a fresh temporary file inside the system temp directory.
+fn temp_path(ext: &str) -> PathBuf {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!(
+        "cargo-workspace-unused-pub-{}-{}.{}",
+        std::process::id(),
+        nanos,
+        ext
+    ))
+}
+
+/// Removes a generated temporary file (SCIP index or config) when dropped.
+struct TempFile(PathBuf);
+
+impl Drop for TempFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// rust-analyzer settings used when generating the index: index only the default
+/// cargo targets and leave `cfg(test)` off. Much faster, and test-declared
+/// methods are dropped in Pass 2 anyway.
+const RA_CONFIG: &str = r#"{"cargo":{"allTargets":false},"cfg":{"setTest":false}}"#;
+
 fn main_impl(args: MainFlags) -> anyhow::Result<()> {
     let MainFlags::WorkspaceUnusedPub(args) = args;
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    let scip = args
-        .scip
-        .unwrap_or_else(|| args.workspace.join("index.scip"));
-
     if !args.workspace.join("Cargo.toml").exists() {
         anyhow::bail!("{:?} does not contain a Cargo.toml file", args.workspace);
     }
+
+    // No manual SCIP step needed: unless `--scip` points at an existing index,
+    // generate one automatically. The default index goes to the system temp
+    // directory so the workspace is never polluted with an `index.scip` file.
+    let scip = args.scip.clone().unwrap_or_else(|| temp_path("scip"));
+    let _temp_scip = args.scip.is_none().then(|| TempFile(scip.clone()));
     if !scip.exists() {
-        warn!(
-            "SCIP file not found at {:?}. Generating with rust-analyzer. This may take a while for large workspaces.",
+        let config = temp_path("json");
+        std::fs::write(&config, RA_CONFIG)?;
+        let _temp_config = TempFile(config.clone());
+        info!(
+            "Generating SCIP index with rust-analyzer into {:?}. This may take a while for large workspaces.",
             scip
         );
-        duct::cmd!("rust-analyzer", "scip", &args.workspace, "--output", &scip)
-            .dir(&args.workspace)
-            .stdout_null()
-            .stderr_null()
-            .run()?;
+        duct::cmd!(
+            "rust-analyzer",
+            "scip",
+            &args.workspace,
+            "--output",
+            &scip,
+            "--config-path",
+            &config
+        )
+        .dir(&args.workspace)
+        .stdout_null()
+        .stderr_null()
+        .run()?;
     }
     info!("Running on {:?} with SCIP {:?}", args.workspace, scip);
 
@@ -64,6 +140,9 @@ fn main_impl(args: MainFlags) -> anyhow::Result<()> {
     // Record method/function and traits declarations
     let mut declarations = HashMap::<&String, &SymbolInformation>::default();
     let mut traits = HashSet::<&String>::default();
+    // Relative path of the document that declares each symbol, keyed by symbol.
+    // Used to drop methods declared in test files.
+    let mut decl_paths = HashMap::<String, String>::default();
     for doc in &index.documents {
         for s in &doc.symbols {
             let Ok(kind) = s.kind.enum_value() else {
@@ -76,6 +155,7 @@ fn main_impl(args: MainFlags) -> anyhow::Result<()> {
                 continue;
             }
             declarations.insert(&s.symbol, s);
+            decl_paths.insert(s.symbol.clone(), doc.relative_path.clone());
         }
     }
     debug!(
@@ -103,11 +183,14 @@ fn main_impl(args: MainFlags) -> anyhow::Result<()> {
     declarations.retain(|_, d| {
         !d.symbol.contains("test")
             && d.display_name != "main"
-            && d.signature_documentation
-                .as_ref()
-                .map(|f| !f.relative_path.contains("test"))
-                .unwrap_or(true)
+            // Skip methods declared in test files (paths such as `tests/…`).
+            && decl_paths
+                .get(&d.symbol)
+                .is_none_or(|p| !p.contains("test"))
             && traits.iter().all(|t| !d.symbol.contains(*t))
+            // Methods implementing an external trait (absent from the workspace
+            // symbol set) are also false positives; skip them structurally.
+            && !is_trait_impl(&d.symbol)
     });
     debug!(
         "Pass 2 (mains, tests, trait methods): {} candidates",
@@ -127,7 +210,7 @@ fn main_impl(args: MainFlags) -> anyhow::Result<()> {
                 && f.path()
                     .extension()
                     .and_then(|f| f.to_str())
-                    .map_or(false, |e| extensions.contains(e))
+                    .is_some_and(|e| extensions.contains(e))
         })
         .for_each(|f| {
             let contents = std::fs::read_to_string(f.path()).unwrap();
@@ -152,7 +235,7 @@ fn main_impl(args: MainFlags) -> anyhow::Result<()> {
             if declarations.contains_key(&o.symbol)
                 && (o.symbol_roles & SymbolRole::Definition as i32) > 0
             {
-                declarations_occurrences.push((&d, &o));
+                declarations_occurrences.push((d, o));
                 declarations.remove(&o.symbol);
             }
         }

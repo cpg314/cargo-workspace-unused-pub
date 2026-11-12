@@ -1,20 +1,20 @@
 [package]
 name = "cargo-workspace-unused-pub"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/cpg314/cargo-workspace-unused-pub"
-category = ["development-tools::cargo-plugins"]
+categories = ["development-tools::cargo-plugins"]
 description = "Detect unused pub methods in a Rust workspace"
 
 [dependencies]
-anyhow = "1.0.81"
-clap = { version = "4.5.3", features = ["derive"] }
-colored = "2.1.0"
-duct = "0.13.7"
-env_logger = "0.11.3"
-itertools = "0.12.1"
-log = "0.4.21"
-protobuf = "=3.2.0"
-scip = "0.3.3"
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
+colored = "3.1.1"
+duct = "1.1.2"
+env_logger = "0.11.11"
+itertools = "0.15.0"
+log = "0.4.35"
+protobuf = "=3.7.2"
+scip = "0.10.0"
 walkdir = "2.5.0"
